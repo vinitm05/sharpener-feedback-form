@@ -1,0 +1,17 @@
+body {
+  margin: 20px;
+}
+
+h1{
+    width:fit-content;
+    margin: auto;
+}
+
+.feedback {
+  margin-bottom: 10px;
+  display: flex;
+}
+
+.feedback-actions button {
+  margin: 0 5px;
+}
