@@ -1,23 +1,50 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  const API_URL =
+    "https://crudcrud.com/api/ca0b9509ac3f4e01abca8e0fc96f71bb/feedbacks";
+
   const form = document.getElementById("feedback-form");
   const nameInput = document.getElementById("name");
   const ratingSelect = document.getElementById("rating");
   const submitButton = document.getElementById("submit-button");
   const feedbackList = document.getElementById("feedback-list");
-  const ratingCounts = Array.from(
-    document.querySelectorAll("#overall-ratings div span:nth-child(2)")
-  );
 
-  let editingFeedbackId = null;
-  let editingOldRating = null;
-  const addFeedbackToDOM = (feedback) => {
+  const ratingCounts = {
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+    5: 0,
+  };
+
+  let editingFeedback = null; // Stores feedback object if editing
+
+  // **🔹 Fetch and Display Existing Feedbacks**
+  async function fetchFeedbacks() {
+    try {
+      const response = await axios.get(API_URL);
+      feedbackList.innerHTML = "";
+      Object.keys(ratingCounts).forEach((key) => (ratingCounts[key] = 0));
+
+      response.data.forEach((feedback) => {
+        addFeedback(feedback);
+        ratingCounts[feedback.rating]++;
+      });
+
+      updateRating();
+    } catch (error) {
+      console.error("Error fetching feedbacks:", error);
+    }
+  }
+
+  // **🔹 Add Feedback to DOM**
+  function addFeedback(feedback) {
     const feedbackDiv = document.createElement("div");
     feedbackDiv.classList.add("feedback");
-    feedbackDiv.dataset.id = feedback._id || Date.now();
+    feedbackDiv.dataset.id = feedback._id; // CRUD CRUD ID
 
     feedbackDiv.innerHTML = `
       <div>
-        ${feedback.name} ${feedback.rating}
+        <strong>${feedback.name}</strong> - Rating: ${feedback.rating}
       </div>
       <div class="feedback-actions">
         <button class="edit">Edit</button>
@@ -26,67 +53,85 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
 
     feedbackList.appendChild(feedbackDiv);
-  };
-  const updateRatingCount = (rating, change) => {
-    const ratingIndex = parseInt(rating) - 1;
-    const currentCount = parseInt(ratingCounts[ratingIndex].textContent);
-    ratingCounts[ratingIndex].textContent = currentCount + change;
-  };
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
+  }
 
+  // **🔹 Update Rating Display**
+  function updateRating() {
+    document
+      .querySelectorAll("#overall-ratings div span:nth-child(2)")
+      .forEach((span, index) => {
+        span.textContent = ratingCounts[index + 1];
+      });
+  }
+
+  // **🔹 Handle Form Submission**
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const name = nameInput.value.trim();
-    const rating = ratingSelect.value;
+    const rating = parseInt(ratingSelect.value);
 
     if (!name) {
       alert("Please enter your name.");
       return;
     }
 
-    if (editingFeedbackId) {
-      const feedbackDiv = document.querySelector(
-        `.feedback[data-id="${editingFeedbackId}"]`
-      );
-      const oldRating = editingOldRating;
-      updateRatingCount(oldRating, -1);
-      updateRatingCount(rating, 1);
-      feedbackDiv.querySelector(
-        "div"
-      ).textContent = `${name} ${rating}`;
-      editingFeedbackId = null;
-      editingOldRating = null;
-      submitButton.textContent = "SUBMIT";
-    } else {
-      const feedback = { name, rating, _id: Date.now() };
-      addFeedbackToDOM(feedback);
-      updateRatingCount(rating, 1);
+    try {
+      if (editingFeedback) {
+        // **UPDATE existing feedback**
+        await axios.put(`${API_URL}/${editingFeedback._id}`, { name, rating });
+
+        ratingCounts[editingFeedback.rating]--; // Decrease old rating count
+        ratingCounts[rating]++; // Increase new rating count
+
+        editingFeedback = null;
+        submitButton.textContent = "SUBMIT";
+      } else {
+        // **CREATE new feedback**
+        const response = await axios.post(API_URL, { name, rating });
+
+        addFeedback(response.data);
+        ratingCounts[rating]++;
+      }
+
+      updateRating();
+      form.reset();
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
     }
-    form.reset();
   });
-  feedbackList.addEventListener("click", (e) => {
+
+  // **🔹 Handle Edit/Delete Actions**
+  feedbackList.addEventListener("click", async (e) => {
     const feedbackDiv = e.target.closest(".feedback");
     const feedbackId = feedbackDiv.dataset.id;
 
     if (e.target.classList.contains("edit")) {
+      // **EDIT Feedback**
       const feedbackText = feedbackDiv.querySelector("div").textContent;
       const [name, rating] = feedbackText
-        .match(/(.+) (\d+)/)
+        .match(/(.+) - Rating: (\d+)/)
         .slice(1, 3);
 
       nameInput.value = name.trim();
       ratingSelect.value = rating;
-      submitButton.textContent = "EDIT RATING";
+      submitButton.textContent = "EDIT FEEDBACK";
 
-      editingFeedbackId = feedbackId;
-      editingOldRating = rating;
+      editingFeedback = { _id: feedbackId, name, rating };
     } else if (e.target.classList.contains("delete")) {
-      const feedbackText = feedbackDiv.querySelector("div").textContent;
-      const rating = feedbackText.match(/ (\d+)/)[1];
-
-      updateRatingCount(rating, -1);
-      feedbackDiv.remove();
+      // **DELETE Feedback**
+      try {
+        await axios.delete(`${API_URL}/${feedbackId}`);
+        ratingCounts[
+          feedbackDiv.querySelector("div").textContent.match(/(\d+)/)[0]
+        ]--; // Decrease count
+        feedbackDiv.remove();
+        updateRating();
+      } catch (error) {
+        console.error("Error deleting feedback:", error);
+      }
     }
   });
-  feedbackList.innerHTML = "";
-  ratingCounts.forEach((count) => (count.textContent = "0"));
+
+  // **Fetch existing feedbacks when page loads**
+  fetchFeedbacks();
 });
