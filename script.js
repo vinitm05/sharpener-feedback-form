@@ -1,137 +1,216 @@
-document.addEventListener("DOMContentLoaded", async () => {
-  const API_URL =
-    "https://crudcrud.com/api/ca0b9509ac3f4e01abca8e0fc96f71bb/feedbacks";
+const apiKey = "69d95786407649b482c2fdc1863e0a66";
+const apiBaseUrl = `https://crudcrud.com/api/${apiKey}/feedback`;
+let currentEditId = null;
 
-  const form = document.getElementById("feedback-form");
-  const nameInput = document.getElementById("name");
-  const ratingSelect = document.getElementById("rating");
-  const submitButton = document.getElementById("submit-button");
-  const feedbackList = document.getElementById("feedback-list");
+// Load data on page load
+window.onload = function () {
+    loadFeedbackData();
+};
 
-  const ratingCounts = {
-    1: 0,
-    2: 0,
-    3: 0,
-    4: 0,
-    5: 0,
-  };
+// Load feedback data from API
+function loadFeedbackData() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('feedback-list').innerHTML = '';
 
-  let editingFeedback = null; // Stores feedback object if editing
+    axios.get(apiBaseUrl)
+        .then(response => {
+            updateUI(response.data);
+            document.getElementById('loading').style.display = 'none';
+        })
+        .catch(error => {
+            console.error('Error loading feedback data:', error);
+            document.getElementById('loading').style.display = 'none';
+            let errorMessage = 'Error loading feedback data.';
+            if (error.response && error.response.status === 404) {
+                errorMessage = 'API key invalid or endpoint not found. Please check your API key.';
+            }
 
-  // **🔹 Fetch and Display Existing Feedbacks**
-  async function fetchFeedbacks() {
-    try {
-      const response = await axios.get(API_URL);
-      feedbackList.innerHTML = "";
-      Object.keys(ratingCounts).forEach((key) => (ratingCounts[key] = 0));
+            document.getElementById('feedback-list').innerHTML =
+                `<div class="error" style="display:block">${errorMessage}</div>`;
+        });
+}
 
-      response.data.forEach((feedback) => {
-        addFeedback(feedback);
-        ratingCounts[feedback.rating]++;
-      });
-
-      updateRating();
-    } catch (error) {
-      console.error("Error fetching feedbacks:", error);
-    }
-  }
-
-  // **🔹 Add Feedback to DOM**
-  function addFeedback(feedback) {
-    const feedbackDiv = document.createElement("div");
-    feedbackDiv.classList.add("feedback");
-    feedbackDiv.dataset.id = feedback._id; // CRUD CRUD ID
-
-    feedbackDiv.innerHTML = `
-      <div>
-        <strong>${feedback.name}</strong> - Rating: ${feedback.rating}
-      </div>
-      <div class="feedback-actions">
-        <button class="edit">Edit</button>
-        <button class="delete">Delete</button>
-      </div>
-    `;
-
-    feedbackList.appendChild(feedbackDiv);
-  }
-
-  // **🔹 Update Rating Display**
-  function updateRating() {
-    document
-      .querySelectorAll("#overall-ratings div span:nth-child(2)")
-      .forEach((span, index) => {
-        span.textContent = ratingCounts[index + 1];
-      });
-  }
-
-  // **🔹 Handle Form Submission**
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+// Submit feedback
+function submitFeedback() {
+    const nameInput = document.getElementById('name');
+    const ratingInput = document.getElementById('rating');
     const name = nameInput.value.trim();
-    const rating = parseInt(ratingSelect.value);
+    const rating = parseInt(ratingInput.value);
 
     if (!name) {
-      alert("Please enter your name.");
-      return;
+        showError('submit-error', 'Please enter your name');
+        return;
     }
 
-    try {
-      if (editingFeedback) {
-        // **UPDATE existing feedback**
-        await axios.put(`${API_URL}/${editingFeedback._id}`, { name, rating });
+    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('submit-error').style.display = 'none';
 
-        ratingCounts[editingFeedback.rating]--; // Decrease old rating count
-        ratingCounts[rating]++; // Increase new rating count
+    if (currentEditId) {
+        // Update existing feedback
+        const feedbackData = {
+            name: name,
+            rating: rating,
+            date: new Date().toISOString()
+        };
 
-        editingFeedback = null;
-        submitButton.textContent = "SUBMIT";
-      } else {
-        // **CREATE new feedback**
-        const response = await axios.post(API_URL, { name, rating });
+        axios.put(`${apiBaseUrl}/${currentEditId}`, feedbackData)
+            .then(() => {
+                // Reset form and update UI
+                resetForm();
+                loadFeedbackData();
+            })
+            .catch(error => {
+                console.error('Error updating feedback:', error);
+                showError('submit-error', 'Error updating feedback. Please try again.');
+                document.getElementById('submit-btn').disabled = false;
+            });
+    } else {
+        // Add new feedback
+        const newFeedback = {
+            name: name,
+            rating: rating,
+            date: new Date().toISOString()
+        };
 
-        addFeedback(response.data);
-        ratingCounts[rating]++;
-      }
-
-      updateRating();
-      form.reset();
-    } catch (error) {
-      console.error("Error submitting feedback:", error);
+        axios.post(apiBaseUrl, newFeedback)
+            .then(() => {
+                // Reset form and update UI
+                resetForm();
+                loadFeedbackData();
+            })
+            .catch(error => {
+                console.error('Error submitting feedback:', error);
+                showError('submit-error', 'Error submitting feedback. Please try again.');
+                document.getElementById('submit-btn').disabled = false;
+            });
     }
-  });
+}
 
-  // **🔹 Handle Edit/Delete Actions**
-  feedbackList.addEventListener("click", async (e) => {
-    const feedbackDiv = e.target.closest(".feedback");
-    const feedbackId = feedbackDiv.dataset.id;
+// Update UI with current data
+function updateUI(feedbackData) {
+    // Update rating counts
+    const counts = [0, 0, 0, 0, 0]; // For ratings 1-5
 
-    if (e.target.classList.contains("edit")) {
-      // **EDIT Feedback**
-      const feedbackText = feedbackDiv.querySelector("div").textContent;
-      const [name, rating] = feedbackText
-        .match(/(.+) - Rating: (\d+)/)
-        .slice(1, 3);
+    feedbackData.forEach(item => {
+        counts[item.rating - 1]++;
+    });
 
-      nameInput.value = name.trim();
-      ratingSelect.value = rating;
-      submitButton.textContent = "EDIT FEEDBACK";
-
-      editingFeedback = { _id: feedbackId, name, rating };
-    } else if (e.target.classList.contains("delete")) {
-      // **DELETE Feedback**
-      try {
-        await axios.delete(`${API_URL}/${feedbackId}`);
-        ratingCounts[
-          feedbackDiv.querySelector("div").textContent.match(/(\d+)/)[0]
-        ]--; // Decrease count
-        feedbackDiv.remove();
-        updateRating();
-      } catch (error) {
-        console.error("Error deleting feedback:", error);
-      }
+    for (let i = 1; i <= 5; i++) {
+        document.getElementById(`star${i}-count`).textContent = counts[i - 1];
     }
-  });
 
-  // **Fetch existing feedbacks when page loads**
-  fetchFeedbacks();
-});
+    // Update feedback list
+    const feedbackList = document.getElementById('feedback-list');
+    feedbackList.innerHTML = '';
+
+    if (feedbackData.length === 0) {
+        feedbackList.innerHTML = '<p>No feedback submitted yet.</p>';
+        return;
+    }
+
+    // Sort feedback by date (newest first)
+    feedbackData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    feedbackData.forEach(item => {
+        const feedbackItem = document.createElement('div');
+        feedbackItem.className = 'feedback-item';
+        if (item._id === currentEditId) {
+            feedbackItem.classList.add('edit-mode');
+        }
+
+        const date = new Date(item.date).toLocaleString();
+
+        feedbackItem.innerHTML = `
+                    <div class="feedback-content">
+                        <p><strong>${item.name}</strong> - 
+                        <span class="stars">${'★'.repeat(item.rating)}</span>
+                        <span class="stars" style="color: #ccc;">${'★'.repeat(5 - item.rating)}</span>
+                        </p>
+                        <p><small>Submitted: ${date}</small></p>
+                    </div>
+                    <div class="feedback-actions">
+                        <button class="update" onclick="editFeedback('${item._id}')">Edit</button>
+                        <button class="delete" onclick="deleteFeedback('${item._id}')">Delete</button>
+                    </div>
+                `;
+
+        feedbackList.appendChild(feedbackItem);
+    });
+
+    document.getElementById('submit-btn').disabled = false;
+}
+
+// Edit feedback
+function editFeedback(id) {
+    document.getElementById('submit-error').style.display = 'none';
+    document.getElementById('loading').style.display = 'block';
+
+    axios.get(`${apiBaseUrl}/${id}`)
+        .then(response => {
+            const feedback = response.data;
+            document.getElementById('name').value = feedback.name;
+            document.getElementById('rating').value = feedback.rating;
+            document.getElementById('form-title').textContent = 'Edit Feedback';
+            document.getElementById('submit-btn').textContent = 'Update Feedback';
+            document.getElementById('cancel-btn').style.display = 'inline-block';
+
+            currentEditId = id;
+            document.getElementById('loading').style.display = 'none';
+
+            // Highlight the current item being edited
+            loadFeedbackData();
+
+            // Scroll to form
+            document.querySelector('.feedback-form').scrollIntoView({ behavior: 'smooth' });
+        })
+        .catch(error => {
+            console.error('Error getting feedback details:', error);
+            document.getElementById('loading').style.display = 'none';
+            showError('submit-error', 'Error retrieving feedback details. Please try again.');
+        });
+}
+
+// Cancel edit mode
+function cancelEdit() {
+    resetForm();
+    loadFeedbackData();
+}
+
+// Reset form
+function resetForm() {
+    document.getElementById('name').value = '';
+    document.getElementById('rating').value = '1';
+    document.getElementById('form-title').textContent = 'Submit Your Feedback';
+    document.getElementById('submit-btn').textContent = 'Submit Feedback';
+    document.getElementById('cancel-btn').style.display = 'none';
+    document.getElementById('submit-error').style.display = 'none';
+
+    currentEditId = null;
+}
+
+// Delete feedback
+function deleteFeedback(id) {
+    if (confirm('Are you sure you want to delete this feedback?')) {
+        document.getElementById('loading').style.display = 'block';
+
+        axios.delete(`${apiBaseUrl}/${id}`)
+            .then(() => {
+                if (currentEditId === id) {
+                    resetForm();
+                }
+                loadFeedbackData();
+            })
+            .catch(error => {
+                console.error('Error deleting feedback:', error);
+                document.getElementById('loading').style.display = 'none';
+                showError('submit-error', 'Error deleting feedback. Please try again.');
+            });
+    }
+}
+
+// Show error message
+function showError(elementId, message) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.textContent = message;
+    errorElement.style.display = 'block';
+}
