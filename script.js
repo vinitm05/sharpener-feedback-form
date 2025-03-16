@@ -9,22 +9,15 @@ window.onload = function () {
 
 // Load feedback data from API
 function loadFeedbackData() {
-    document.getElementById('loading').style.display = 'block';
     document.getElementById('feedback-list').innerHTML = '';
 
     axios.get(apiBaseUrl)
         .then(response => {
             updateUI(response.data);
-            document.getElementById('loading').style.display = 'none';
         })
         .catch(error => {
             console.error('Error loading feedback data:', error);
-            document.getElementById('loading').style.display = 'none';
             let errorMessage = 'Error loading feedback data.';
-            if (error.response && error.response.status === 404) {
-                errorMessage = 'API key invalid or endpoint not found. Please check your API key.';
-            }
-
             document.getElementById('feedback-list').innerHTML =
                 `<div class="error" style="display:block">${errorMessage}</div>`;
         });
@@ -89,7 +82,7 @@ function submitFeedback() {
 // Update UI with current data
 function updateUI(feedbackData) {
     // Update rating counts
-    const counts = [0, 0, 0, 0, 0]; // For ratings 1-5
+    const counts = [0, 0, 0, 0, 0];
 
     feedbackData.forEach(item => {
         counts[item.rating - 1]++;
@@ -103,12 +96,7 @@ function updateUI(feedbackData) {
     const feedbackList = document.getElementById('feedback-list');
     feedbackList.innerHTML = '';
 
-    if (feedbackData.length === 0) {
-        feedbackList.innerHTML = '<p>No feedback submitted yet.</p>';
-        return;
-    }
-
-    // Sort feedback by date (newest first)
+    // Sort feedback by date
     feedbackData.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     feedbackData.forEach(item => {
@@ -122,9 +110,8 @@ function updateUI(feedbackData) {
 
         feedbackItem.innerHTML = `
                     <div class="feedback-content">
-                        <p><strong>${item.name}</strong> - 
-                        <span class="stars">${'★'.repeat(item.rating)}</span>
-                        <span class="stars" style="color: #ccc;">${'★'.repeat(5 - item.rating)}</span>
+                        <p><strong>${item.name}</strong> : 
+                        <span class="stars">${'*'.repeat(item.rating)}</span>
                         </p>
                         <p><small>Submitted: ${date}</small></p>
                     </div>
@@ -143,7 +130,6 @@ function updateUI(feedbackData) {
 // Edit feedback
 function editFeedback(id) {
     document.getElementById('submit-error').style.display = 'none';
-    document.getElementById('loading').style.display = 'block';
 
     axios.get(`${apiBaseUrl}/${id}`)
         .then(response => {
@@ -155,7 +141,6 @@ function editFeedback(id) {
             document.getElementById('cancel-btn').style.display = 'inline-block';
 
             currentEditId = id;
-            document.getElementById('loading').style.display = 'none';
 
             // Highlight the current item being edited
             loadFeedbackData();
@@ -165,7 +150,6 @@ function editFeedback(id) {
         })
         .catch(error => {
             console.error('Error getting feedback details:', error);
-            document.getElementById('loading').style.display = 'none';
             showError('submit-error', 'Error retrieving feedback details. Please try again.');
         });
 }
@@ -190,9 +174,6 @@ function resetForm() {
 
 // Delete feedback
 function deleteFeedback(id) {
-    if (confirm('Are you sure you want to delete this feedback?')) {
-        document.getElementById('loading').style.display = 'block';
-
         axios.delete(`${apiBaseUrl}/${id}`)
             .then(() => {
                 if (currentEditId === id) {
@@ -202,10 +183,8 @@ function deleteFeedback(id) {
             })
             .catch(error => {
                 console.error('Error deleting feedback:', error);
-                document.getElementById('loading').style.display = 'none';
                 showError('submit-error', 'Error deleting feedback. Please try again.');
             });
-    }
 }
 
 // Show error message
